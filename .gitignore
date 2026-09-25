@@ -1,0 +1,34 @@
+# Local AI assistant state
+.codex/
+.claude/
+.cursor/
+.windsurf/
+.continue/
+.gemini/
+.opencode/
+.roo/
+.agents/
+.tabnine/
+.aider*
+.cursorrules
+.windsurfrules
+.aider.conf.yml
+# Local editor state
+.vscode/
+.idea/
+*.code-workspace
+$PROJECT_DIR/
+Users/
+.pio/
+managed_components/
+sdkconfig
+sdkconfig.old
+sdkconfig.*
+!sdkconfig.defaults
+src/private_config.h
+.env
+.env.*
+!.env.example
+.DS_Store
+build/
+dist/
