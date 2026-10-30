@@ -21,7 +21,7 @@
 
 static const char *TAG = "sunset-lamp-ble";
 
-#define LAMP_NAME "IOTBT90A"
+#define LAMP_NAME "IOTBTBE1"
 #define LAMP_SERVICE_UUID 0xFFFF
 #define LAMP_WRITE_UUID 0xFF01
 #define LAMP_NOTIFY_UUID 0xFF02

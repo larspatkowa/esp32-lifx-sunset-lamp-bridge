@@ -1,13 +1,13 @@
 # ESP32 LIFX and Sunset Lamp Bridge
 
-This project gives an ESP32 two jobs: connect to the home Wi-Fi and provides an access point for devices that cannot reach the internet on an isolated network (such as enterprise Wi-Fi), and it controls an IOTBT90A sunset lamp over Bluetooth LE. The lamp is exposed to ESP RainMaker as "Sunset Lamp" and Echo devices can stay on the existing Wi-Fi because RainMaker commands go through the ESP32's cloud connection.
+This project gives an ESP32 two jobs: connect to the home Wi-Fi and provides an access point for devices that cannot reach the internet on an isolated network (such as enterprise Wi-Fi), and it controls a sunset lamp named IOTBTBE1 over Bluetooth LE. The lamp is exposed to ESP RainMaker as "Sunset Lamp" and Echo devices can stay on the existing Wi-Fi because RainMaker commands go through the ESP32's cloud connection.
 
 ```mermaid
 flowchart LR
     App["RainMaker app"] <--> Cloud["ESP RainMaker cloud"]
-    Alexa["Alexa (not verified)"] <--> Cloud
+    Alexa["Alexa"] <--> Cloud
     Cloud <-->|"existing Wi-Fi"| Bridge["ESP32 Jelly Bridge"]
-    Bridge <-->|"Bluetooth LE"| Lamp["IOTBT90A sunset lamp"]
+    Bridge <-->|"Bluetooth LE"| Lamp["Sunset lamp (BLE name: IOTBTBE1)"]
     Bridge -->|"access point + NAT"| Bulb["LIFX bulb"]
     Bridge <-->|"station Wi-Fi"| Router["Existing Wi-Fi router"]
 ```
