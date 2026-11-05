@@ -11,9 +11,11 @@
 #include "esp_rmaker_standard_devices.h"
 #include "esp_rmaker_standard_params.h"
 #include "esp_rmaker_standard_types.h"
+#include "esp_system.h"
 #include "esp_wifi.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "sunset_lamp_ble.h"
@@ -23,6 +25,7 @@
 #define DEFAULT_LAMP_BRIGHTNESS 45
 #define DEFAULT_LAMP_HUE 24
 #define DEFAULT_LAMP_SATURATION 100
+#define DIAGNOSTICS_PERIOD_MS 60000
 
 static const char *TAG = "jelly-bridge";
 static esp_netif_t *s_ap_netif;
@@ -30,6 +33,9 @@ static esp_netif_t *s_sta_netif;
 static bool s_napt_enabled;
 static esp_rmaker_device_t *s_lamp_device;
 static esp_rmaker_param_t *s_power_param;
+static SemaphoreHandle_t s_ap_dns_lock;
+static bool s_ap_dns_offered;
+static esp_ip_addr_t s_offered_dns;
 
 static void configure_ap_dns_from_upstream(void)
 {
@@ -43,13 +49,28 @@ static void configure_ap_dns_from_upstream(void)
         return;
     }
 
+    /* Runs from both the event task and app_main. Restarting the DHCP server
+     * on every upstream reconnect is needless churn for bridge clients, so only
+     * do it when the DNS server they should be offered has actually changed. */
+    xSemaphoreTake(s_ap_dns_lock, portMAX_DELAY);
+    if (s_ap_dns_offered && memcmp(&s_offered_dns, &dns.ip, sizeof(dns.ip)) == 0) {
+        xSemaphoreGive(s_ap_dns_lock);
+        return;
+    }
+
     const uint8_t offer_dns = 0x02;
-    ESP_ERROR_CHECK(esp_netif_dhcps_stop(s_ap_netif));
+    const esp_err_t stop_err = esp_netif_dhcps_stop(s_ap_netif);
+    if (stop_err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
+        ESP_ERROR_CHECK(stop_err);
+    }
     ESP_ERROR_CHECK(esp_netif_dhcps_option(s_ap_netif, ESP_NETIF_OP_SET,
                                            ESP_NETIF_DOMAIN_NAME_SERVER,
                                            (void *)&offer_dns, sizeof(offer_dns)));
     ESP_ERROR_CHECK(esp_netif_set_dns_info(s_ap_netif, ESP_NETIF_DNS_MAIN, &dns));
     ESP_ERROR_CHECK(esp_netif_dhcps_start(s_ap_netif));
+    s_offered_dns = dns.ip;
+    s_ap_dns_offered = true;
+    xSemaphoreGive(s_ap_dns_lock);
 }
 
 static void ip_event_handler(void *arg, esp_event_base_t event_base,
@@ -114,6 +135,18 @@ static void start_bridge_access_point(void)
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+
+    /* Tuning only, so a rejected setting must not take the bridge down. The
+     * upstream link is 20 MHz and both interfaces share one radio and channel. */
+    esp_err_t tune_err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+    if (tune_err != ESP_OK) {
+        ESP_LOGW(TAG, "Could not set AP bandwidth: %s", esp_err_to_name(tune_err));
+    }
+    tune_err = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (tune_err != ESP_OK) {
+        ESP_LOGW(TAG, "Could not disable Wi-Fi power save: %s", esp_err_to_name(tune_err));
+    }
+
     ESP_ERROR_CHECK(esp_netif_set_default_netif(s_sta_netif));
     configure_ap_dns_from_upstream();
 
@@ -243,8 +276,31 @@ static void reset_rainmaker_onboarding_if_boot_button_held(void)
     }
 }
 
+static void log_diagnostics_forever(void)
+{
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(DIAGNOSTICS_PERIOD_MS));
+
+        wifi_ap_record_t upstream = {0};
+        const bool has_upstream = esp_wifi_sta_get_ap_info(&upstream) == ESP_OK;
+        wifi_sta_list_t clients = {0};
+        const bool has_clients = esp_wifi_ap_get_sta_list(&clients) == ESP_OK;
+        ESP_LOGI(TAG, "upstream rssi=%d channel=%u, bridge clients=%d, free heap=%lu, min free heap=%lu",
+                 has_upstream ? upstream.rssi : 0, has_upstream ? upstream.primary : 0,
+                 has_clients ? clients.num : -1,
+                 (unsigned long)esp_get_free_heap_size(),
+                 (unsigned long)esp_get_minimum_free_heap_size());
+    }
+}
+
 void app_main(void)
 {
+    s_ap_dns_lock = xSemaphoreCreateMutex();
+    if (s_ap_dns_lock == NULL) {
+        ESP_LOGE(TAG, "Could not create the DNS lock");
+        abort();
+    }
+
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -266,4 +322,5 @@ void app_main(void)
 
     start_bridge_access_point();
     ESP_ERROR_CHECK(sunset_lamp_ble_start(s_power_param));
+    log_diagnostics_forever();
 }

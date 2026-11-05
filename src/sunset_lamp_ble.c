@@ -430,6 +430,8 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "Found %s at RSSI %d", LAMP_NAME, event->disc.rssi);
         ble_gap_disc_cancel();
         s_scan_running = false;
+        /* Measured: throughput halves whenever a link exists, and stays the same
+         * from 50 ms to 1 s intervals, so keep the responsive default interval. */
         const int rc = ble_gap_connect(s_own_addr_type, &event->disc.addr,
                                        30000, NULL, gap_event, NULL);
         if (rc != 0) {
@@ -496,8 +498,9 @@ static void start_scan(void)
     }
 
     struct ble_gap_disc_params params = {
-        .itvl = 0x0050,
-        .window = 0x0030,
+        /* 10 ms every 100 ms, leaving Wi-Fi the radio while the lamp is absent. */
+        .itvl = 0x00A0,
+        .window = 0x0010,
         .filter_policy = BLE_HCI_SCAN_FILT_NO_WL,
         .limited = 0,
         .passive = 0,

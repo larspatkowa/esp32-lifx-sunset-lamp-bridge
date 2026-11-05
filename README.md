@@ -28,3 +28,11 @@ flowchart LR
 ## What's controlled
 
 Power, brightness, hue, and saturation can be controlled via RainMaker. Using the ESP RainMaker Alexa skill, the device appears as a native device. The ESP32 uses AP-plus-station mode on one radio, so it follows the upstream AP's channel and shares airtime.
+
+## Performance
+
+Before tuning for performance, I was getting about 0.8 Mbps through the ESP32 when running a speed test on my iPhone. With the following changes, both download and upload speeds were around 3 Mbps:
+
+* The CPU now runs at 240 MHz
+* The flash now runs at 80 MHz
+* Larger Wi-Fi queues
